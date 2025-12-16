@@ -1,0 +1,1203 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>It’s Raining Love — One-File Experience</title>
+  <style>
+    :root{
+      --bg0:#06080c;
+      --bg1:#0a0f18;
+      --fog:#0e1522;
+      --text:#e9edf6;
+      --muted:#b8c0d6;
+      --dim: rgba(233,237,246,.78);
+      --glass: rgba(10,15,24,.48);
+      --glass2: rgba(10,15,24,.66);
+      --stroke: rgba(233,237,246,.16);
+      --btn: rgba(233,237,246,.10);
+      --btnHover: rgba(233,237,246,.16);
+      --btnActive: rgba(233,237,246,.22);
+      --accent: rgba(208,222,255,.9);
+      --shadow: rgba(0,0,0,.35);
+      --safe: env(safe-area-inset-bottom, 0px);
+    }
+    *{ box-sizing:border-box; }
+    html,body{ height:100%; margin:0; background: var(--bg0); color: var(--text); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; }
+    #app{ position:fixed; inset:0; overflow:hidden; background: radial-gradient(1200px 900px at 60% 35%, #101a2b 0%, var(--bg1) 45%, var(--bg0) 100%); }
+    canvas{ position:absolute; inset:0; width:100%; height:100%; display:block; }
+    /* Subtle vignette + fog */
+    #vignette{
+      position:absolute; inset:-2px;
+      background:
+        radial-gradient(1200px 900px at 55% 40%, rgba(0,0,0,0) 0%, rgba(0,0,0,.12) 55%, rgba(0,0,0,.46) 100%),
+        linear-gradient(to bottom, rgba(5,7,10,.22), rgba(5,7,10,.78));
+      pointer-events:none;
+      mix-blend-mode: multiply;
+    }
+    #fog{
+      position:absolute; inset:0;
+      background:
+        radial-gradient(800px 500px at 70% 70%, rgba(14,21,34,.38), rgba(14,21,34,0) 60%),
+        radial-gradient(700px 520px at 30% 82%, rgba(14,21,34,.30), rgba(14,21,34,0) 65%);
+      pointer-events:none;
+      opacity:.8;
+    }
+
+    /* HUD */
+    #hud{
+      position:absolute; inset:0; pointer-events:none;
+      display:flex; flex-direction:column; justify-content:space-between;
+      padding: clamp(14px, 2.2vw, 22px);
+    }
+    #topbar{
+      pointer-events:none;
+      display:flex; align-items:flex-start; justify-content:space-between; gap:12px;
+    }
+    #titleBlock{
+      max-width:min(740px, 92vw);
+      background: linear-gradient(to bottom, rgba(10,15,24,.55), rgba(10,15,24,.28));
+      border:1px solid var(--stroke);
+      border-radius: 18px;
+      padding: 12px 14px;
+      box-shadow: 0 14px 40px rgba(0,0,0,.28);
+      backdrop-filter: blur(10px);
+    }
+    #bookTitle{
+      margin:0;
+      font-weight:650;
+      letter-spacing:.2px;
+      font-size: 14px;
+      color: rgba(233,237,246,.92);
+    }
+    #chapterTitle{
+      margin:4px 0 0 0;
+      font-weight:750;
+      letter-spacing:.3px;
+      font-size: 18px;
+      color: rgba(233,237,246,.98);
+    }
+    #controls{
+      pointer-events:auto;
+      display:flex; gap:8px; align-items:center;
+    }
+    .pill{
+      border:1px solid var(--stroke);
+      background: rgba(10,15,24,.40);
+      border-radius: 999px;
+      padding: 10px 12px;
+      color: rgba(233,237,246,.92);
+      cursor:pointer;
+      user-select:none;
+      transition: background .15s ease, transform .06s ease;
+      box-shadow: 0 10px 28px rgba(0,0,0,.22);
+      backdrop-filter: blur(10px);
+      font-size: 13px;
+      line-height:1;
+    }
+    .pill:hover{ background: rgba(233,237,246,.10); }
+    .pill:active{ transform: translateY(1px); background: rgba(233,237,246,.14); }
+    .pill[aria-pressed="true"]{ background: rgba(233,237,246,.14); }
+
+    /* Verse layer */
+    #verseLayer{
+      pointer-events:none;
+      position:absolute;
+      top: clamp(68px, 10vh, 120px);
+      left: 50%;
+      transform: translateX(-50%);
+      width: min(820px, 92vw);
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+    .verse{
+      padding: 14px 16px;
+      border-radius: 18px;
+      border: 1px solid rgba(233,237,246,.12);
+      background: linear-gradient(to bottom, rgba(10,15,24,.56), rgba(10,15,24,.34));
+      box-shadow: 0 18px 48px rgba(0,0,0,.28);
+      backdrop-filter: blur(12px);
+      opacity:0;
+      transform: translateY(10px);
+      transition: opacity .45s ease, transform .45s ease, filter .45s ease;
+      color: rgba(233,237,246,.95);
+      font-size: 16px;
+      line-height: 1.55;
+      letter-spacing: .15px;
+    }
+    .verse.show{ opacity:1; transform: translateY(0); }
+    .verse.ghost{ opacity:.55; filter: blur(.15px); }
+
+    /* Dialogue */
+    #dialogueLayer{
+      pointer-events:none;
+      position:absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: calc(160px + var(--safe));
+      width: min(820px, 92vw);
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      align-items: stretch;
+    }
+    .line{
+      border: 1px solid rgba(233,237,246,.12);
+      background: linear-gradient(to bottom, rgba(10,15,24,.62), rgba(10,15,24,.38));
+      border-radius: 18px;
+      padding: 12px 14px;
+      box-shadow: 0 18px 44px rgba(0,0,0,.25);
+      backdrop-filter: blur(12px);
+      opacity:0;
+      transform: translateY(10px);
+      transition: opacity .35s ease, transform .35s ease;
+      color: rgba(233,237,246,.95);
+      font-size: 15px;
+      line-height: 1.5;
+    }
+    .line.show{ opacity:1; transform: translateY(0); }
+    .speaker{
+      display:inline-block;
+      font-weight: 750;
+      letter-spacing:.2px;
+      color: rgba(208,222,255,.98);
+      margin-right: 6px;
+    }
+
+    /* Choices */
+    #choiceTray{
+      pointer-events:auto;
+      position:absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: calc(18px + var(--safe));
+      width: min(860px, 94vw);
+      border-radius: 22px;
+      border: 1px solid rgba(233,237,246,.14);
+      background: linear-gradient(to bottom, rgba(10,15,24,.72), rgba(10,15,24,.44));
+      box-shadow: 0 24px 60px rgba(0,0,0,.34);
+      backdrop-filter: blur(14px);
+      padding: 10px;
+      opacity:0;
+      transform-origin: 50% 100%;
+      transform: translateX(-50%) translateY(8px) scale(.99);
+      transition: opacity .25s ease, transform .25s ease;
+    }
+    #choiceTray.show{
+      opacity:1;
+      transform: translateX(-50%) translateY(0) scale(1);
+    }
+    #choices{
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+    }
+    .choice{
+      width:100%;
+      text-align:left;
+      border: 1px solid rgba(233,237,246,.14);
+      background: rgba(233,237,246,.08);
+      color: rgba(233,237,246,.95);
+      padding: 12px 14px;
+      border-radius: 16px;
+      cursor:pointer;
+      transition: background .15s ease, transform .06s ease, border-color .15s ease;
+      font-size: 15px;
+      line-height: 1.35;
+      letter-spacing: .1px;
+      user-select:none;
+    }
+    .choice:hover{ background: rgba(233,237,246,.12); border-color: rgba(233,237,246,.20); }
+    .choice:active{ transform: translateY(1px); background: rgba(233,237,246,.16); }
+    .hintRow{
+      display:flex;
+      justify-content:space-between;
+      gap:10px;
+      padding: 8px 6px 0 6px;
+      color: rgba(184,192,214,.9);
+      font-size: 12px;
+      letter-spacing:.2px;
+    }
+    .kbd{
+      border:1px solid rgba(233,237,246,.16);
+      background: rgba(233,237,246,.06);
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      color: rgba(233,237,246,.88);
+    }
+
+    /* Start modal */
+    #start{
+      position:absolute; inset:0;
+      display:flex; align-items:center; justify-content:center;
+      padding: clamp(16px, 3vw, 28px);
+      background: rgba(0,0,0,.30);
+      backdrop-filter: blur(10px);
+    }
+    #card{
+      width: min(860px, 94vw);
+      border-radius: 26px;
+      border: 1px solid rgba(233,237,246,.14);
+      background: linear-gradient(to bottom, rgba(10,15,24,.82), rgba(10,15,24,.50));
+      box-shadow: 0 40px 120px rgba(0,0,0,.55);
+      padding: 18px;
+    }
+    #card h1{ margin:0; font-size: 28px; letter-spacing:.2px; }
+    #card p{ margin:10px 0 0 0; color: rgba(184,192,214,.95); line-height:1.55; }
+    #row{
+      display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; align-items:center;
+    }
+    #name{
+      flex: 1 1 240px;
+      border-radius: 16px;
+      border:1px solid rgba(233,237,246,.14);
+      background: rgba(233,237,246,.06);
+      padding: 12px 14px;
+      color: rgba(233,237,246,.95);
+      font-size: 15px;
+      outline:none;
+    }
+    #begin{
+      border-radius: 16px;
+      border:1px solid rgba(233,237,246,.14);
+      background: rgba(233,237,246,.10);
+      padding: 12px 16px;
+      color: rgba(233,237,246,.95);
+      cursor:pointer;
+      font-size: 15px;
+      font-weight:650;
+      transition: background .15s ease, transform .06s ease;
+      user-select:none;
+      white-space:nowrap;
+    }
+    #begin:hover{ background: rgba(233,237,246,.14); }
+    #begin:active{ transform: translateY(1px); background: rgba(233,237,246,.18); }
+    .mini{
+      margin-top:12px;
+      display:flex; gap:10px; flex-wrap:wrap;
+      color: rgba(184,192,214,.88);
+      font-size: 12px;
+      letter-spacing:.2px;
+    }
+    .tag{
+      border:1px solid rgba(233,237,246,.14);
+      background: rgba(233,237,246,.05);
+      padding: 6px 10px;
+      border-radius: 999px;
+    }
+    /* Tap-to-advance */
+    #tapCatcher{
+      position:absolute; inset:0;
+      cursor: default;
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+  <canvas id="bg"></canvas>
+  <canvas id="rain"></canvas>
+  <div id="fog"></div>
+  <div id="vignette"></div>
+
+  <div id="tapCatcher" aria-hidden="true"></div>
+
+  <div id="hud">
+    <div id="topbar">
+      <div id="titleBlock">
+        <p id="bookTitle">It’s Raining Love</p>
+        <p id="chapterTitle">Air Around Us</p>
+      </div>
+      <div id="controls">
+        <button id="btnSound" class="pill" aria-pressed="false" title="Toggle sound">Sound</button>
+        <button id="btnSkip" class="pill" title="Skip / Next">Next</button>
+        <button id="btnRestart" class="pill" title="Restart">Restart</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="verseLayer"></div>
+  <div id="dialogueLayer"></div>
+
+  <div id="choiceTray" aria-live="polite">
+    <div id="choices"></div>
+    <div class="hintRow">
+      <span>Choose with <span class="kbd">1</span> <span class="kbd">2</span> <span class="kbd">3</span> or click</span>
+      <span>Advance with <span class="kbd">Space</span></span>
+    </div>
+  </div>
+
+  <div id="start">
+    <div id="card">
+      <h1>It’s Raining Love</h1>
+      <p>A living scene. A verse at a time. When it’s your turn, you choose what you can say.</p>
+      <div id="row">
+        <input id="name" placeholder="Your name (seed)" maxlength="28" autocomplete="off" />
+        <button id="begin">Begin</button>
+      </div>
+      <div class="mini">
+        <span class="tag" id="traitTag">Trait: —</span>
+        <span class="tag" id="imageTag">Image: —</span>
+        <span class="tag">Tip: click/tap to advance when no choices</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  // -------------------------
+  // Story data (Chapter 1 demo)
+  // -------------------------
+  const STORY = {
+    bookTitle: "It’s Raining Love",
+    chapters: [{
+      id: "ch1",
+      title: "Air Around Us",
+      screens: [
+        {
+          id: "s1",
+          stage: { player: { x: 0.5, y: 0.72 }, mara: null, jonah: null, nila: null, rain: { intensity: 1.0 } },
+          verses: [
+            "Rain is pouring so hard I can’t see where the street begins or ends.",
+            "Everything beyond a few feet dissolves into motion and blur.",
+            "My shoes are soaked; the phone keeps buzzing in my hand like it’s alive."
+          ],
+          dialogue: [],
+          choices: null,
+          next: "s2"
+        },
+        {
+          id: "s2",
+          stage: { player: { x: 0.52, y: 0.72 }, mara: { x: 0.40, y: 0.72, enter: "left" }, jonah: { x: 0.66, y: 0.72, enter: "right" }, nila: null, rain: { intensity: 1.0 } },
+          verses: [
+            "Someone says my name.",
+            "I can’t tell who."
+          ],
+          dialogue: [
+            { who: "Mara", text: "Hey. Are you with us?" },
+            { who: "Jonah", text: "You stopped responding. We were worried." }
+          ],
+          choices: {
+            prompt: null,
+            options: [
+              { label: "“I just need air.”", next: "s3_air", tag: "breath" },
+              { label: "(Say nothing. Let the rain answer.)", next: "s3_silence", tag: "silence" },
+              { label: "“I’m fine.”", next: "s3_fine", tag: "deflect" }
+            ]
+          }
+        },
+        {
+          id: "s3_air",
+          stage: { player: { x: 0.54, y: 0.72, step: 0.03 }, mara: { x: 0.40, y: 0.72 }, jonah: { x: 0.66, y: 0.72 }, nila: null, rain: { intensity: 0.92, dip: true } },
+          verses: [
+            "I inhale. It feels shallow. I try again.",
+            "For a second the city sounds like it’s farther away."
+          ],
+          dialogue: [
+            { who: "Mara", text: "Okay. Then take it. Don’t vanish on us." },
+            { who: "Jonah", text: "Just… don’t go far." }
+          ],
+          choices: null,
+          next: "s4"
+        },
+        {
+          id: "s3_silence",
+          stage: { player: { x: 0.52, y: 0.72 }, mara: { x: 0.40, y: 0.72 }, jonah: { x: 0.66, y: 0.72 }, nila: null, rain: { intensity: 1.0 } },
+          verses: [
+            "I turn the phone face down without looking.",
+            "The rain fills the space where an explanation should be."
+          ],
+          dialogue: [
+            { who: "Mara", text: "Don’t do that thing where you disappear while you’re standing right here." },
+            { who: "Jonah", text: "We can wait. But don’t lock us out." }
+          ],
+          choices: null,
+          next: "s4"
+        },
+        {
+          id: "s3_fine",
+          stage: { player: { x: 0.52, y: 0.72 }, mara: { x: 0.40, y: 0.72, react: "shift" }, jonah: { x: 0.66, y: 0.72, react: "lookaway" }, nila: null, rain: { intensity: 1.02, buzz: true } },
+          verses: [
+            "The lie lands too clean.",
+            "Like I’ve practiced it."
+          ],
+          dialogue: [
+            { who: "Mara", text: "You don’t have to perform right now." },
+            { who: "Jonah", text: "If you’re fine, say it slower." }
+          ],
+          choices: null,
+          next: "s4"
+        },
+        {
+          id: "s4",
+          stage: { player: { x: 0.53, y: 0.72 }, mara: { x: 0.40, y: 0.72 }, jonah: { x: 0.66, y: 0.72 }, nila: { x: 0.78, y: 0.72, enter: "right" }, rain: { intensity: 1.0 } },
+          verses: [
+            "We stand close enough that our shoulders almost touch, but no one rushes it.",
+            "Above us, a pale reflection flashes off metal — moonlight, maybe. Or the city pretending to be calm."
+          ],
+          dialogue: [
+            { who: "Nila", text: "You three look like a meeting that should’ve been an email." },
+            { who: "Nila", text: "…Okay. Something’s up." }
+          ],
+          choices: {
+            options: [
+              { label: "Tell them: “I’m in pain. It’s been a while.”", next: "s5_truth", tag: "trust" },
+              { label: "Change the subject: “How long has it been raining?”", next: "s5_weather", tag: "deflect" },
+              { label: "Step away into the open for one breath.", next: "s5_step", tag: "breath" }
+            ]
+          }
+        },
+        {
+          id: "s5_truth",
+          stage: { player: { x: 0.53, y: 0.72 }, mara: { x: 0.40, y: 0.72 }, jonah: { x: 0.66, y: 0.72 }, nila: { x: 0.78, y: 0.72 }, rain: { intensity: 0.98 } },
+          verses: [
+            "I say it plainly, like a fact.",
+            "No one argues with it. No one tries to fix it in a sentence."
+          ],
+          dialogue: [
+            { who: "Mara", text: "Thank you." },
+            { who: "Jonah", text: "Okay. Stay here with us." },
+            { who: "Nila", text: "You don’t have to make it poetic. Just real." }
+          ],
+          choices: null,
+          next: null,
+          ending: { title: "End of Demo", text: "Chapter 1 continues from here. Add more screens in STORY.chapters[0].screens." }
+        },
+        {
+          id: "s5_weather",
+          stage: { player: { x: 0.53, y: 0.72 }, mara: { x: 0.40, y: 0.72 }, jonah: { x: 0.66, y: 0.72 }, nila: { x: 0.78, y: 0.72 }, rain: { intensity: 1.0 } },
+          verses: [
+            "I ask about the weather because it can’t ask anything back.",
+            "But the question still sounds like a door half-open."
+          ],
+          dialogue: [
+            { who: "Nila", text: "Long enough to make people honest." },
+            { who: "Mara", text: "Or quiet." }
+          ],
+          choices: null,
+          next: null,
+          ending: { title: "End of Demo", text: "Chapter 1 continues from here. Add more screens in STORY.chapters[0].screens." }
+        },
+        {
+          id: "s5_step",
+          stage: { player: { x: 0.55, y: 0.72, step: 0.02 }, mara: { x: 0.40, y: 0.72 }, jonah: { x: 0.66, y: 0.72 }, nila: { x: 0.78, y: 0.72 }, rain: { intensity: 0.92, dip: true } },
+          verses: [
+            "I take one step into the open.",
+            "Rain hits my face harder — and my breath finally shows up."
+          ],
+          dialogue: [
+            { who: "Jonah", text: "That. Do that again." },
+            { who: "Mara", text: "Feet on the ground. Don’t disappear." }
+          ],
+          choices: null,
+          next: null,
+          ending: { title: "End of Demo", text: "Chapter 1 continues from here. Add more screens in STORY.chapters[0].screens." }
+        }
+      ]
+    }]
+  };
+
+  // -------------------------
+  // Deterministic seed logic
+  // -------------------------
+  function seedProfile(name) {
+    const n = (name || "").trim();
+    const len = n.length || 0;
+    const trait = len <= 4 ? "Quiet" : (len <= 7 ? "Direct" : "Analytical");
+    const first = (n[0] || "A").toUpperCase();
+    const code = first.charCodeAt(0);
+    let image = "stairwell echo";
+    if (code >= 73 && code <= 80) image = "bus window rain"; // I-P
+    if (code >= 81 && code <= 90) image = "rooftop wind";    // Q-Z
+    return { trait, image };
+  }
+
+  // -------------------------
+  // Audio (optional, minimal)
+  // -------------------------
+  let audioCtx = null;
+  let rainNode = null;
+  let trafficNode = null;
+  let masterGain = null;
+  let soundOn = false;
+
+  function ensureAudio() {
+    if (audioCtx) return;
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = 0.0;
+    masterGain.connect(audioCtx.destination);
+
+    // Rain noise (filtered)
+    rainNode = makeNoiseNode(audioCtx, { hp: 300, lp: 3500, gain: 0.14 });
+    // Distant traffic hum (low filtered noise + sine)
+    trafficNode = makeTrafficNode(audioCtx);
+
+    rainNode.output.connect(masterGain);
+    trafficNode.output.connect(masterGain);
+  }
+
+  function makeNoiseNode(ctx, {hp, lp, gain}) {
+    const bufferSize = 2 * ctx.sampleRate;
+    const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const out = noiseBuffer.getChannelData(0);
+    for (let i=0;i<bufferSize;i++) out[i] = (Math.random()*2-1) * (Math.random()*0.7+0.3);
+
+    const source = ctx.createBufferSource();
+    source.buffer = noiseBuffer;
+    source.loop = true;
+
+    const highpass = ctx.createBiquadFilter();
+    highpass.type = "highpass";
+    highpass.frequency.value = hp;
+
+    const lowpass = ctx.createBiquadFilter();
+    lowpass.type = "lowpass";
+    lowpass.frequency.value = lp;
+
+    const g = ctx.createGain();
+    g.gain.value = gain;
+
+    source.connect(highpass);
+    highpass.connect(lowpass);
+    lowpass.connect(g);
+
+    source.start();
+    return { output: g, gain: g.gain, lowpass, highpass };
+  }
+
+  function makeTrafficNode(ctx){
+    const noise = makeNoiseNode(ctx, {hp: 40, lp: 420, gain: 0.10});
+    const sine = ctx.createOscillator();
+    sine.type = "sine";
+    sine.frequency.value = 56;
+
+    const g = ctx.createGain();
+    g.gain.value = 0.06;
+
+    sine.connect(g);
+    g.connect(noise.output);
+
+    sine.start();
+
+    return { output: noise.output, noise, sine, gain: noise.gain };
+  }
+
+  function setSound(on) {
+    ensureAudio();
+    soundOn = on;
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    const target = on ? 1.0 : 0.0;
+    masterGain.gain.setTargetAtTime(target, audioCtx.currentTime, 0.06);
+    document.getElementById("btnSound").setAttribute("aria-pressed", on ? "true" : "false");
+  }
+
+  // -------------------------
+  // Canvas: background + rain
+  // -------------------------
+  const bg = document.getElementById("bg");
+  const rain = document.getElementById("rain");
+  const bgCtx = bg.getContext("2d");
+  const rainCtx = rain.getContext("2d");
+
+  let W=0,H=0, DPR=1;
+  function resize(){
+    DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    W = Math.floor(window.innerWidth);
+    H = Math.floor(window.innerHeight);
+    bg.width = Math.floor(W * DPR);
+    bg.height = Math.floor(H * DPR);
+    rain.width = Math.floor(W * DPR);
+    rain.height = Math.floor(H * DPR);
+    bgCtx.setTransform(DPR,0,0,DPR,0,0);
+    rainCtx.setTransform(DPR,0,0,DPR,0,0);
+  }
+  window.addEventListener("resize", resize, {passive:true});
+  resize();
+
+  // Rain particles
+  const drops = [];
+  const MAX_DROPS = 540;
+  function resetDrop(d, intensity=1){
+    d.x = Math.random() * W;
+    d.y = -Math.random() * H;
+    d.vy = (800 + Math.random()*900) * (0.75 + intensity*0.55);
+    d.vx = (120 + Math.random()*160) * (0.55 + intensity*0.4);
+    d.len = 10 + Math.random()*18;
+    d.th = 1 + Math.random()*1.2;
+    d.alpha = 0.22 + Math.random()*0.18;
+    d.depth = Math.random(); // 0 far, 1 near
+  }
+  for(let i=0;i<MAX_DROPS;i++){
+    const d = {};
+    resetDrop(d, 1);
+    d.y = Math.random()*H;
+    drops.push(d);
+  }
+
+  // Characters (stylized silhouettes)
+  const CAST = {
+    Player: { color: "rgba(233,237,246,.88)" },
+    Mara:   { color: "rgba(208,222,255,.92)" },
+    Jonah:  { color: "rgba(190,208,240,.88)" },
+    Nila:   { color: "rgba(220,232,255,.90)" }
+  };
+
+  function drawCity(ctx){
+    ctx.clearRect(0,0,W,H);
+
+    // distant gradient glow
+    ctx.save();
+    ctx.globalAlpha = 1;
+    const g = ctx.createLinearGradient(0,0,0,H);
+    g.addColorStop(0, "rgba(16,26,43,0.0)");
+    g.addColorStop(0.45,"rgba(16,26,43,0.22)");
+    g.addColorStop(1, "rgba(0,0,0,0.45)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0,0,W,H);
+    ctx.restore();
+
+    // building silhouettes
+    const baseY = H*0.74;
+    ctx.save();
+    ctx.fillStyle = "rgba(0,0,0,0.44)";
+    for(let i=0;i<18;i++){
+      const bw = 60 + Math.random()*120;
+      const bh = 120 + Math.random()*320;
+      const x = (i/18)*W + (Math.random()*22-11);
+      ctx.fillRect(x, baseY-bh, bw, bh);
+    }
+    ctx.restore();
+
+    // street sheen
+    ctx.save();
+    const sheen = ctx.createLinearGradient(0, baseY, 0, H);
+    sheen.addColorStop(0, "rgba(233,237,246,0.04)");
+    sheen.addColorStop(0.5, "rgba(233,237,246,0.00)");
+    sheen.addColorStop(1, "rgba(233,237,246,0.02)");
+    ctx.fillStyle = sheen;
+    ctx.fillRect(0, baseY, W, H-baseY);
+    ctx.restore();
+
+    // distant headlight streaks
+    ctx.save();
+    ctx.globalAlpha = 0.18;
+    for(let i=0;i<16;i++){
+      const y = baseY + 22 + Math.random()*(H-baseY-50);
+      const x = Math.random()*W;
+      const w = 40 + Math.random()*120;
+      ctx.strokeStyle = "rgba(233,237,246,0.55)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x+w, y+Math.random()*6-3);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawCharacter(ctx, who, xNorm, yNorm, t, state){
+    const x = xNorm * W;
+    const y = yNorm * H;
+
+    const bob = Math.sin(t*2.0 + xNorm*4)*2; // subtle breathing/shift
+    const step = (state && state.step) ? state.step : 0;
+    const sx = x + step*W;
+
+    ctx.save();
+    ctx.translate(sx, y + bob);
+    ctx.globalAlpha = 0.92;
+
+    const c = CAST[who]?.color || "rgba(233,237,246,.85)";
+
+    // shadow puddle
+    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    ctx.beginPath();
+    ctx.ellipse(0, 20, 28, 10, 0, 0, Math.PI*2);
+    ctx.fill();
+
+    // body silhouette (simple)
+    ctx.fillStyle = c;
+
+    // legs
+    ctx.beginPath();
+    ctx.roundRect(-10, -2, 8, 22, 4);
+    ctx.roundRect(2, -2, 8, 22, 4);
+    ctx.fill();
+
+    // torso
+    ctx.beginPath();
+    ctx.roundRect(-16, -34, 32, 36, 14);
+    ctx.fill();
+
+    // head
+    ctx.beginPath();
+    ctx.arc(0, -46, 12, 0, Math.PI*2);
+    ctx.fill();
+
+    // hood/coat hint
+    ctx.globalAlpha = 0.22;
+    ctx.fillStyle = "rgba(0,0,0,0.6)";
+    ctx.beginPath();
+    ctx.roundRect(-18, -38, 36, 40, 14);
+    ctx.fill();
+
+    // small "rain drip" lines on character
+    ctx.globalAlpha = 0.18;
+    ctx.strokeStyle = "rgba(233,237,246,0.75)";
+    ctx.lineWidth = 1;
+    for(let i=0;i<6;i++){
+      const rx = -14 + Math.random()*28;
+      const ry = -58 + Math.random()*70;
+      ctx.beginPath();
+      ctx.moveTo(rx, ry);
+      ctx.lineTo(rx+2, ry+10);
+      ctx.stroke();
+    }
+
+    // reactions
+    if (state && state.react === "shift"){
+      ctx.globalAlpha = 0.85;
+      ctx.strokeStyle = "rgba(233,237,246,0.22)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(14, -46, 3.5, 0, Math.PI*2);
+      ctx.stroke();
+    }
+    if (state && state.react === "lookaway"){
+      ctx.globalAlpha = 0.75;
+      ctx.strokeStyle = "rgba(233,237,246,0.18)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(-14, -46, 3.5, 0, Math.PI*2);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  // -------------------------
+  // UI + scene controller
+  // -------------------------
+  const verseLayer = document.getElementById("verseLayer");
+  const dialogueLayer = document.getElementById("dialogueLayer");
+  const choiceTray = document.getElementById("choiceTray");
+  const choicesEl = document.getElementById("choices");
+  const chapterTitleEl = document.getElementById("chapterTitle");
+  const bookTitleEl = document.getElementById("bookTitle");
+
+  const btnSkip = document.getElementById("btnSkip");
+  const btnRestart = document.getElementById("btnRestart");
+  const btnSound = document.getElementById("btnSound");
+
+  const startOverlay = document.getElementById("start");
+  const nameInput = document.getElementById("name");
+  const beginBtn = document.getElementById("begin");
+  const traitTag = document.getElementById("traitTag");
+  const imageTag = document.getElementById("imageTag");
+  const tapCatcher = document.getElementById("tapCatcher");
+
+  let playerName = "";
+  let profile = seedProfile("");
+  let currentChapter = STORY.chapters[0];
+  let currentScreen = null;
+
+  // Flow state
+  let flow = {
+    phase: "idle",        // idle | running | waitingChoice | ending
+    stepIndex: 0,         // within screen sequence
+    queue: [],            // flattened items for current screen
+    timer: null,
+    allowTapAdvance: true
+  };
+
+  function clearTimers(){
+    if (flow.timer) { clearTimeout(flow.timer); flow.timer = null; }
+  }
+
+  function msForText(text){
+    // Reading pace: base + per char, with sensible caps.
+    const len = (text || "").length;
+    const base = 1100;
+    const perChar = 28; // ~2.8s for 60 chars
+    const extra = Math.min(5200, Math.max(900, len * perChar));
+    return base + extra;
+  }
+
+  function setChapterUI(){
+    bookTitleEl.textContent = STORY.bookTitle;
+    chapterTitleEl.textContent = currentChapter.title;
+  }
+
+  function getScreenById(id){
+    return currentChapter.screens.find(s => s.id === id) || null;
+  }
+
+  function buildQueueForScreen(screen){
+    // Flatten into: verses (in order) then dialogue (in order), then choices (pause) or auto next.
+    const q = [];
+    (screen.verses || []).forEach(v => q.push({ type: "verse", text: v }));
+    (screen.dialogue || []).forEach(d => q.push({ type: "line", who: d.who, text: d.text }));
+    if (screen.choices) q.push({ type: "choices", data: screen.choices });
+    else if (screen.ending) q.push({ type: "ending", data: screen.ending });
+    return q;
+  }
+
+  function resetLayers(){
+    verseLayer.innerHTML = "";
+    dialogueLayer.innerHTML = "";
+    hideChoices();
+  }
+
+  function showVerse(text){
+    // Keep at most 2 verses visible: last becomes ghost.
+    const existing = Array.from(verseLayer.querySelectorAll(".verse"));
+    existing.forEach(v => v.classList.add("ghost"));
+
+    const div = document.createElement("div");
+    div.className = "verse";
+    div.textContent = text;
+    verseLayer.appendChild(div);
+
+    // trim to last 2
+    const all = Array.from(verseLayer.querySelectorAll(".verse"));
+    while (all.length > 2) {
+      all[0].remove();
+      all.shift();
+    }
+    requestAnimationFrame(() => div.classList.add("show"));
+  }
+
+  function showLine(who, text){
+    // Keep last 3 lines
+    const div = document.createElement("div");
+    div.className = "line";
+    div.innerHTML = `<span class="speaker">${escapeHTML(who)}:</span>${escapeHTML(text)}`;
+    dialogueLayer.appendChild(div);
+
+    const all = Array.from(dialogueLayer.querySelectorAll(".line"));
+    while (all.length > 3) {
+      all[0].remove();
+      all.shift();
+    }
+    requestAnimationFrame(() => div.classList.add("show"));
+  }
+
+  function escapeHTML(s){
+    return String(s).replace(/[&<>"']/g, m => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+    }[m]));
+  }
+
+  function showChoices(choices){
+    choicesEl.innerHTML = "";
+    const opts = choices.options || [];
+    opts.forEach((opt, idx) => {
+      const b = document.createElement("button");
+      b.className = "choice";
+      b.dataset.index = String(idx);
+      b.textContent = opt.label;
+      b.addEventListener("click", () => choose(idx));
+      choicesEl.appendChild(b);
+    });
+    choiceTray.classList.add("show");
+    flow.phase = "waitingChoice";
+  }
+
+  function hideChoices(){
+    choiceTray.classList.remove("show");
+    choicesEl.innerHTML = "";
+  }
+
+  function choose(idx){
+    if (!currentScreen?.choices) return;
+    const opt = currentScreen.choices.options[idx];
+    if (!opt) return;
+    hideChoices();
+    clearTimers();
+    // Go next screen
+    goToScreen(opt.next);
+  }
+
+  function goToScreen(id){
+    const next = getScreenById(id);
+    if (!next) return;
+    currentScreen = next;
+    resetLayers();
+    flow.queue = buildQueueForScreen(currentScreen);
+    flow.stepIndex = 0;
+    flow.phase = "running";
+    // Apply stage (for visuals + audio)
+    applyStage(currentScreen.stage || {});
+    // Start stepping
+    step();
+  }
+
+  function applyStage(stage){
+    // Update audio intensity subtly
+    const intensity = stage?.rain?.intensity ?? 1.0;
+    if (soundOn && audioCtx && rainNode && trafficNode){
+      const rainGain = 0.10 + intensity*0.09;
+      rainNode.gain.setTargetAtTime(rainGain, audioCtx.currentTime, 0.08);
+      // small "dip" effect when breathing
+      if (stage.rain?.dip){
+        rainNode.lowpass.frequency.setTargetAtTime(2400, audioCtx.currentTime, 0.06);
+        setTimeout(() => {
+          if (!soundOn) return;
+          rainNode.lowpass.frequency.setTargetAtTime(3500, audioCtx.currentTime, 0.16);
+        }, 700);
+      }
+      // traffic steady
+      trafficNode.gain.setTargetAtTime(0.08, audioCtx.currentTime, 0.16);
+    }
+  }
+
+  function step(force=false){
+    clearTimers();
+
+    if (flow.phase === "ending") return;
+
+    // If waiting for choice, do nothing.
+    if (flow.phase === "waitingChoice") return;
+
+    const item = flow.queue[flow.stepIndex];
+    if (!item){
+      // Screen finished: auto-advance if has next.
+      if (currentScreen.next) goToScreen(currentScreen.next);
+      else {
+        // If no next and no ending, just idle.
+        flow.phase = "idle";
+      }
+      return;
+    }
+
+    if (item.type === "verse"){
+      showVerse(item.text);
+      flow.stepIndex++;
+      flow.timer = setTimeout(() => step(), force ? 0 : msForText(item.text));
+      return;
+    }
+
+    if (item.type === "line"){
+      showLine(item.who, item.text);
+      flow.stepIndex++;
+      flow.timer = setTimeout(() => step(), force ? 0 : msForText(item.text) - 300);
+      return;
+    }
+
+    if (item.type === "choices"){
+      // Show choices, stop progression
+      showChoices(item.data);
+      flow.stepIndex++;
+      return;
+    }
+
+    if (item.type === "ending"){
+      flow.phase = "ending";
+      showVerse(item.data.title);
+      showLine("Note", item.data.text);
+      hideChoices();
+      return;
+    }
+  }
+
+  // Tap / click to advance (only when not in choices)
+  tapCatcher.addEventListener("click", () => {
+    if (startOverlay.style.display !== "none") return;
+    if (flow.phase === "waitingChoice") return;
+    step(true);
+  });
+
+  // Keyboard
+  window.addEventListener("keydown", (e) => {
+    if (startOverlay.style.display !== "none") return;
+
+    if (flow.phase === "waitingChoice"){
+      if (e.key === "1" || e.key === "2" || e.key === "3"){
+        choose(Number(e.key)-1);
+      }
+      return;
+    }
+    if (e.key === " "){
+      e.preventDefault();
+      step(true);
+    }
+    if (e.key.toLowerCase() === "n"){
+      step(true);
+    }
+  });
+
+  btnSkip.addEventListener("click", () => step(true));
+  btnRestart.addEventListener("click", () => restart());
+  btnSound.addEventListener("click", () => setSound(!soundOn));
+
+  function restart(){
+    clearTimers();
+    resetLayers();
+    setChapterUI();
+    goToScreen("s1");
+  }
+
+  // Start screen
+  function updateSeedTags(){
+    const val = nameInput.value;
+    const p = seedProfile(val);
+    traitTag.textContent = `Trait: ${p.trait}`;
+    imageTag.textContent = `Image: ${p.image}`;
+  }
+  nameInput.addEventListener("input", updateSeedTags);
+  updateSeedTags();
+
+  beginBtn.addEventListener("click", () => {
+    playerName = (nameInput.value || "").trim() || "You";
+    profile = seedProfile(playerName);
+    startOverlay.style.display = "none";
+    setChapterUI();
+    // Start audio only if user toggles sound (keeps it polite)
+    // Begin story
+    goToScreen("s1");
+  });
+
+  // -------------------------
+  // Render loop
+  // -------------------------
+  let last = performance.now();
+  let t = 0;
+  let stageState = { player: null, mara: null, jonah: null, nila: null, rain: { intensity: 1.0 } };
+
+  function getActiveStage(){
+    return (currentScreen && currentScreen.stage) ? currentScreen.stage : { rain: { intensity: 1.0 } };
+  }
+
+  function render(now){
+    const dt = Math.min(0.033, (now - last) / 1000);
+    last = now;
+    t += dt;
+
+    // Draw background
+    drawCity(bgCtx);
+
+    // Draw characters (using current screen stage)
+    const stage = getActiveStage();
+    // Smoothly interpolate stage positions for "enter"
+    // (simple smoothing: store stageState per character)
+    stageState = smoothStage(stageState, stage, dt);
+
+    // Layer order: distant characters first for depth (not critical)
+    if (stageState.mara)  drawCharacter(bgCtx, "Mara",  stageState.mara.x,  stageState.mara.y, t, stageState.mara);
+    if (stageState.jonah) drawCharacter(bgCtx, "Jonah", stageState.jonah.x, stageState.jonah.y, t, stageState.jonah);
+    if (stageState.nila)  drawCharacter(bgCtx, "Nila",  stageState.nila.x,  stageState.nila.y, t, stageState.nila);
+    if (stageState.player)drawCharacter(bgCtx, "Player",stageState.player.x,stageState.player.y, t, stageState.player);
+
+    // Rain
+    const intensity = stageState?.rain?.intensity ?? 1.0;
+    drawRain(rainCtx, dt, intensity);
+
+    requestAnimationFrame(render);
+  }
+
+  function smoothStage(prev, target, dt){
+    const lerp = (a,b,k)=> a + (b-a)*k;
+    const k = 1 - Math.pow(0.001, dt); // frame-rate independent smoothing
+
+    function smoothChar(prevChar, tgtChar){
+      if (!tgtChar) return null;
+
+      // If prev doesn't exist but target has enter direction, spawn offscreen
+      if (!prevChar){
+        const spawn = { ...tgtChar };
+        if (tgtChar.enter === "left") spawn.x = -0.10;
+        if (tgtChar.enter === "right") spawn.x = 1.10;
+        if (tgtChar.enter === "bottom") spawn.y = 1.15;
+        return spawn;
+      }
+      const out = { ...prevChar, ...tgtChar };
+      out.x = lerp(prevChar.x, tgtChar.x, k*0.9);
+      out.y = lerp(prevChar.y, tgtChar.y, k*0.9);
+      // carry misc state
+      out.step = tgtChar.step ?? prevChar.step ?? 0;
+      out.react = tgtChar.react ?? null;
+      return out;
+    }
+
+    const out = {};
+    out.player = smoothChar(prev.player, target.player);
+    out.mara   = smoothChar(prev.mara, target.mara);
+    out.jonah  = smoothChar(prev.jonah, target.jonah);
+    out.nila   = smoothChar(prev.nila, target.nila);
+    out.rain   = { intensity: target?.rain?.intensity ?? prev?.rain?.intensity ?? 1.0, dip: target?.rain?.dip, buzz: target?.rain?.buzz };
+    return out;
+  }
+
+  function drawRain(ctx, dt, intensity){
+    ctx.clearRect(0,0,W,H);
+    ctx.save();
+
+    // occasional "mist" veil
+    ctx.globalAlpha = 0.06 + intensity*0.06;
+    ctx.fillStyle = "rgba(233,237,246,0.35)";
+    ctx.fillRect(0,0,W,H);
+
+    const windX = (220 + 80*Math.sin(t*0.35)) * (0.4 + intensity*0.45);
+
+    for (let i=0;i<drops.length;i++){
+      const d = drops[i];
+      const sp = d.vy * dt;
+      d.x += (windX + d.vx) * dt * (0.6 + d.depth*0.55);
+      d.y += sp * (0.7 + d.depth*0.6);
+
+      if (d.y > H + 30 || d.x > W + 80){
+        resetDrop(d, intensity);
+        d.x = Math.random()*W - 80;
+        d.y = -20 - Math.random()*120;
+      }
+
+      const a = d.alpha * (0.65 + intensity*0.6) * (0.5 + d.depth*0.8);
+      ctx.globalAlpha = a;
+
+      ctx.strokeStyle = "rgba(233,237,246,0.92)";
+      ctx.lineWidth = d.th * (0.7 + d.depth*0.7);
+
+      ctx.beginPath();
+      const dx = (windX*0.003 + 0.6) * d.len;
+      ctx.moveTo(d.x, d.y);
+      ctx.lineTo(d.x + dx, d.y + d.len);
+      ctx.stroke();
+    }
+
+    // ground splashes
+    ctx.globalAlpha = 0.18 + intensity*0.12;
+    ctx.strokeStyle = "rgba(233,237,246,0.35)";
+    ctx.lineWidth = 1;
+    const baseY = H*0.76;
+    for(let i=0;i<50;i++){
+      const x = Math.random()*W;
+      const y = baseY + Math.random()*(H-baseY);
+      ctx.beginPath();
+      ctx.arc(x, y, 2 + Math.random()*3, 0, Math.PI*2);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  // -------------------------
+  // Boot
+  // -------------------------
+  setChapterUI();
+  drawCity(bgCtx);
+  requestAnimationFrame(render);
+
+  // First click/tap can also enable audio politely
+  document.addEventListener("pointerdown", () => {
+    // do nothing unless they already toggled sound
+    // (prevents autoplay)
+  }, { once: true });
+
+})();
+</script>
+</body>
+</html>
